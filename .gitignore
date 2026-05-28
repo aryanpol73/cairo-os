@@ -1,0 +1,12 @@
+# Ignore .env files everywhere in the project
+**/.env
+**/.env.local
+**/.env.*.local
+
+# Ignore build/temp folders for everything
+**/.next/
+**/dist/
+**/build/
+**/out/
+**/node_modules/
+**/__pycache__/
