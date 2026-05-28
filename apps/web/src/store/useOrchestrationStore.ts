@@ -16,6 +16,8 @@ interface OrchestrationState {
   generatedCode: string
   history: ProjectHistory[]
   ws: WebSocket | null
+  // Added for workspace sync:
+  updateFromBackend: (data: any) => void
   initializeEngine: (prompt: string) => void
   submitFeedback: (feedback: string) => void
   resetEngine: () => void
@@ -35,6 +37,10 @@ const getAgentColor = (agent: string | undefined) => {
   return 'text-neutral-400'
 }
 
+// Get the base API URL from environment variables
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+const WS_BASE = API_BASE.replace('http', 'ws');
+
 export const useOrchestrationStore = create<OrchestrationState>((set, get) => ({
   currentPhase: 'idle',
   prompt: '',
@@ -45,6 +51,18 @@ export const useOrchestrationStore = create<OrchestrationState>((set, get) => ({
   history: [],
   ws: null,
 
+  updateFromBackend: (data: any) => {
+    set((state) => {
+      const newState = { ...state, ...data };
+      if (data.currentPhase) newState.currentPhase = data.currentPhase;
+      if (data.architecture) newState.architecture = data.architecture;
+      if (data.backlog) newState.backlog = data.backlog;
+      if (data.generatedCode) newState.generatedCode = data.generatedCode;
+      if (data.agent && data.log) get().addLog(data.agent, data.log);
+      return newState;
+    });
+  },
+
   addLog: (agent, text) => {
     set((state) => ({ logs: [...state.logs, { id: Math.random().toString(36).substring(7), agent: agent || 'SYSTEM', text: text || '', color: getAgentColor(agent) }] }))
   },
@@ -52,24 +70,14 @@ export const useOrchestrationStore = create<OrchestrationState>((set, get) => ({
   initializeEngine: (userPrompt) => {
     const existingWs = get().ws; if (existingWs) existingWs.close()
     set({ prompt: userPrompt, currentPhase: 'discovery', logs: [], architecture: { nodes: [], edges: [] }, backlog: { tasks: [] }, generatedCode: '' })
-    const socket = new WebSocket('ws://localhost:8000/ws/orchestrate')
+    
+    const socket = new WebSocket(`${WS_BASE}/ws/orchestrate`)
     socket.onopen = () => socket.send(JSON.stringify({ prompt: userPrompt }))
     socket.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data)
-        
-        // Auto-update history when the pipeline finishes saving to the database
-        if (data.currentPhase) {
-          set({ currentPhase: data.currentPhase as PhaseType })
-          if (data.currentPhase === 'stable') {
-            get().fetchHistory()
-          }
-        }
-        
-        if (data.architecture) set({ architecture: data.architecture })
-        if (data.backlog) set({ backlog: data.backlog })
-        if (data.generatedCode) set({ generatedCode: data.generatedCode })
-        if (data.agent && data.log) get().addLog(data.agent, data.log)
+        get().updateFromBackend(data)
+        if (data.currentPhase === 'stable') get().fetchHistory()
       } catch (err) { console.error(err) }
     }
     socket.onclose = () => {}; socket.onerror = () => set({ currentPhase: 'error' })
@@ -92,7 +100,7 @@ export const useOrchestrationStore = create<OrchestrationState>((set, get) => ({
 
   fetchHistory: async () => {
     try {
-      const res = await fetch('http://localhost:8000/api/projects')
+      const res = await fetch(`${API_BASE}/api/projects`)
       const data = await res.json()
       set({ history: data.projects || [] })
     } catch (e) { console.error("Failed to fetch history", e) }
@@ -100,12 +108,12 @@ export const useOrchestrationStore = create<OrchestrationState>((set, get) => ({
 
   loadProject: async (id) => {
     try {
-      const res = await fetch(`http://localhost:8000/api/projects/${id}`)
+      const res = await fetch(`${API_BASE}/api/projects/${id}`)
       const data = await res.json()
       if (!data.error) {
         set({
           prompt: data.prompt, architecture: data.architecture, backlog: data.backlog, generatedCode: data.codebase,
-          currentPhase: 'stable', logs: [{ id: 'loaded', agent: 'SYSTEM', text: `Loaded Project #${id} from local memory.`, color: 'text-emerald-400' }]
+          currentPhase: 'stable', logs: [{ id: 'loaded', agent: 'SYSTEM', text: `Loaded Project #${id} from memory.`, color: 'text-emerald-400' }]
         })
       }
     } catch (e) { console.error("Failed to load project", e) }
