@@ -14,12 +14,10 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-[#030305] text-white overflow-hidden selection:bg-violet-500/30 relative">
       
-      {/* Dynamic Global Aura Core */}
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(139,92,246,0.02)_1px,transparent_0)] bg-[size:32px_32px] pointer-events-none" />
       
       <AnimatePresence mode="wait">
         {currentPhase === 'idle' ? (
-          /* --- ENTERPRISE LANDING SYSTEM --- */
           <motion.div
             key="landing"
             initial={{ opacity: 0, filter: "blur(5px)" }}
@@ -54,7 +52,6 @@ export default function Home() {
                 </p>
               </motion.div>
 
-              {/* Shared Token Component Wrapper */}
               <motion.div 
                 layoutId="commandBarQuantum"
                 transition={{ type: "spring", bounce: 0.08, duration: 0.7 }}
@@ -67,7 +64,6 @@ export default function Home() {
             </div>
           </motion.div>
         ) : (
-          /* --- AUTOMATED WORKSPACE CONSOLE --- */
           <motion.div
             key="workspace"
             initial={{ opacity: 0 }}

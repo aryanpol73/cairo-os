@@ -7,14 +7,17 @@ import { useOrchestrationStore } from "../../store/useOrchestrationStore"
 
 export function CommandInput() {
   const [inputValue, setInputValue] = useState('')
-  const { startEngine, setPrompt, isEngineActive } = useOrchestrationStore()
+  
+  // FIXED: Destructured to match your new state schema properties perfectly
+  const { initializeEngine, currentPhase } = useOrchestrationStore()
+  const isEngineActive = currentPhase !== 'idle'
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!inputValue.trim()) return
 
-    setPrompt(inputValue)
-    startEngine()
+    // FIXED: Invoking your real WebSocket engine sequence passing the string payload
+    initializeEngine(inputValue)
   }
 
   return (
@@ -30,6 +33,7 @@ export function CommandInput() {
             <Sparkles className="w-5 h-5 text-violet-400/70 mr-4 shrink-0 transition-colors group-focus-within:text-violet-400" />
             
             <input
+              suppressHydrationWarning // FIXED: Suppresses browser auto-fill/extension HTML mismatches
               type="text"
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
@@ -79,9 +83,9 @@ export function CommandInput() {
       </form>
       
       <div className="mt-6 flex justify-center space-x-6 text-[11px] font-mono tracking-wider text-neutral-500/70">
-        <span className="hover:text-violet-400 transition-colors cursor-pointer">Try: &ldquo;Real-time B2B metrics dashboard&rdquo;</span>
+        <span onClick={() => setInputValue("Real-time B2B metrics dashboard")} className="hover:text-violet-400 transition-colors cursor-pointer">Try: &ldquo;Real-time B2B metrics dashboard&rdquo;</span>
         <span>•</span>
-        <span className="hover:text-violet-400 transition-colors cursor-pointer">&ldquo;AI fitness app for students&rdquo;</span>
+        <span onClick={() => setInputValue("AI fitness app for students")} className="hover:text-violet-400 transition-colors cursor-pointer">&ldquo;AI fitness app for students&rdquo;</span>
       </div>
     </div>
   )

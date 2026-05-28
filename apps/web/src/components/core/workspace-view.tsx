@@ -1,11 +1,12 @@
 "use client"
 
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { AgentSidebar } from "../agents/agent-sidebar"
+import { SwarmSidebar } from './swarm-sidebar'
 import { AgentFeed } from "../agents/agent-feed"
+import { HistorySidebar } from './history-sidebar'
 import { useOrchestrationStore } from "../../store/useOrchestrationStore"
-import { RefreshCw, Cpu, Columns3, Network, Terminal, ShieldCheck, Menu, X, Users, Activity, Layers, Sparkles } from 'lucide-react'
+import { RefreshCw, Cpu, Columns3, Network, Terminal, ShieldCheck, Menu, X, Users, Activity, Layers, Sparkles, Send, Database } from 'lucide-react'
 import { ArchitectureGraph } from "../canvas/arch-graph"
 import { SprintBoard } from "../canvas/sprint-board"
 import { CodeTree } from "../canvas/code-tree"
@@ -13,15 +14,37 @@ import { QARunner } from "../canvas/qa-runner"
 
 type CanvasTab = 'topology' | 'sprint' | 'code' | 'qa'
 type MobileTab = 'swarm' | 'canvas' | 'stream'
-type DesktopDrawer = 'none' | 'swarm' | 'stream'
+type DesktopDrawer = 'none' | 'swarm' | 'stream' | 'history'
 
 export function WorkspaceView() {
-  const { currentPhase, prompt, resetEngine } = useOrchestrationStore()
+  const { currentPhase, prompt: globalPrompt, initializeEngine, submitFeedback, resetEngine } = useOrchestrationStore()
   
   // Navigation States
+  const [localInput, setLocalInput] = useState('')
   const [canvasTab, setCanvasTab] = useState<CanvasTab>('topology')
   const [mobileTab, setMobileTab] = useState<MobileTab>('canvas')
   const [desktopDrawer, setDesktopDrawer] = useState<DesktopDrawer>('none')
+
+  // Automatically switch tabs based on backend phase
+  useEffect(() => {
+    if (currentPhase === 'architecting') { setCanvasTab('topology'); setMobileTab('canvas') } 
+    else if (currentPhase === 'planning') { setCanvasTab('sprint'); setMobileTab('canvas') } 
+    else if (currentPhase === 'implementing') { setCanvasTab('code'); setMobileTab('canvas') } 
+    else if (currentPhase === 'testing') { setCanvasTab('qa'); setMobileTab('canvas') }
+  }, [currentPhase])
+
+  // Smart Form Handler: Initializes OR Refactors based on state
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!localInput.trim()) return
+
+    if (currentPhase === 'stable') {
+      submitFeedback(localInput)
+      setLocalInput('') // Clear input after sending feedback
+    } else {
+      initializeEngine(localInput)
+    }
+  }
 
   const canvasTabs = [
     { id: 'topology', label: 'Arch', icon: Network },
@@ -30,24 +53,21 @@ export function WorkspaceView() {
     { id: 'qa', label: 'QA Test', icon: ShieldCheck },
   ]
 
+  const isInputDisabled = currentPhase !== 'idle' && currentPhase !== 'stable' && currentPhase !== 'error'
+
   return (
     <div className="fixed inset-0 z-50 flex flex-col h-[100dvh] w-screen bg-[#030305] text-white overflow-hidden select-none font-sans">
       
-      {/* ========================================================= */}
-      {/* 1. DYNAMIC VIBE & AURA BACKGROUND (Matches Front Page)    */}
-      {/* ========================================================= */}
+      {/* Background Aura */}
       <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden bg-gradient-to-br from-[#05030a] via-[#020203] to-[#0a0512]">
         <div className="absolute top-[-20%] left-[-10%] w-[60vw] h-[60vw] bg-violet-600/15 blur-[120px] rounded-full mix-blend-screen animate-pulse duration-[8000ms]" />
         <div className="absolute bottom-[-20%] right-[-10%] w-[50vw] h-[50vw] bg-fuchsia-600/10 blur-[120px] rounded-full mix-blend-screen animate-pulse duration-[10000ms]" />
         <div className="absolute inset-0 opacity-[0.25] mix-blend-overlay" style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg viewBox=%220 0 200 200%22 xmlns=%22http://www.w3.org/2000/svg%22%3E%3Cfilter id=%22noiseFilter%22%3E%3CfeTurbulence type=%22fractalNoise%22 baseFrequency=%220.65%22 numOctaves=%223%22 stitchTiles=%22stitch%22/%3E%3C/filter%3E%3Crect width=%22100%25%22 height=%22100%25%22 filter=%22url(%23noiseFilter)%22/%3E%3C/svg%3E")' }} />
       </div>
 
-      {/* ========================================================= */}
-      {/* 2. DESKTOP FLOATING HEADER (Hidden on Mobile)             */}
-      {/* ========================================================= */}
+      {/* Desktop Header */}
       <div className="hidden md:flex absolute top-6 left-6 right-6 h-16 bg-white/[0.02] backdrop-blur-2xl border border-white/10 rounded-2xl items-center justify-between px-4 z-40 shadow-[0_10px_40px_-10px_rgba(0,0,0,0.8)]">
         
-        {/* Left: Hamburger Menu -> Opens Swarm */}
         <div className="flex items-center space-x-4">
           <button 
             onClick={() => setDesktopDrawer(desktopDrawer === 'swarm' ? 'none' : 'swarm')}
@@ -56,16 +76,30 @@ export function WorkspaceView() {
             {desktopDrawer === 'swarm' ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
           </button>
           
-          <div className="flex items-center space-x-2 bg-black/40 border border-white/5 px-3 py-1.5 rounded-lg">
-            <Sparkles className="w-4 h-4 text-violet-400" />
-            <div className="flex flex-col">
-              <span className="text-[9px] text-neutral-500 font-mono leading-none">SCOPE</span>
-              <span className="text-xs font-medium text-neutral-200 truncate max-w-[200px] leading-none mt-0.5">{prompt || "No Scope"}</span>
+          {/* Smart Input Form */}
+          <form onSubmit={handleSubmit} className="relative w-96 flex items-center">
+            <div className={`absolute left-3 p-1.5 rounded-lg ${currentPhase === 'stable' ? 'bg-emerald-500/20' : 'bg-violet-500/20'}`}>
+              <Sparkles className={`w-3.5 h-3.5 ${currentPhase === 'stable' ? 'text-emerald-400' : 'text-violet-400'}`} />
             </div>
-          </div>
+            <input 
+              type="text"
+              value={localInput}
+              onChange={(e) => setLocalInput(e.target.value)}
+              placeholder={currentPhase === 'stable' ? "Pipeline Stable. Request an edit or feature..." : "Describe your application scope..."}
+              disabled={isInputDisabled}
+              className="w-full bg-black/40 border border-white/10 rounded-xl py-2 pl-11 pr-12 text-xs font-medium text-neutral-200 placeholder-neutral-500 focus:outline-none focus:border-violet-500/50 transition-all disabled:opacity-50"
+            />
+            <button 
+              type="submit"
+              disabled={!localInput.trim() || isInputDisabled}
+              className="absolute right-2 p-1.5 bg-white text-black rounded-lg hover:bg-neutral-200 transition-colors disabled:opacity-50"
+            >
+              <Send className="w-3.5 h-3.5" />
+            </button>
+          </form>
         </div>
 
-        {/* Center: Canvas Tabs (The Core Features) */}
+        {/* Center Canvas Tabs */}
         <div className="flex p-1 bg-black/40 border border-white/10 rounded-xl shadow-inner">
           {canvasTabs.map((tab) => {
             const isActive = canvasTab === tab.id
@@ -86,25 +120,32 @@ export function WorkspaceView() {
           })}
         </div>
 
-        {/* Right: Terminal Menu -> Opens Live Logs */}
+        {/* Right Menu */}
         <div className="flex items-center space-x-3">
           <button onClick={resetEngine} className="px-3 py-1.5 rounded-lg hover:bg-white/5 text-[11px] font-mono text-neutral-500 hover:text-white transition-colors flex items-center space-x-2">
             <RefreshCw className="w-3 h-3" />
             <span>Reset</span>
           </button>
+
+          {/* History Button */}
+          <button 
+            onClick={() => setDesktopDrawer(desktopDrawer === 'history' ? 'none' : 'history')}
+            className={`p-2.5 rounded-xl transition-all duration-300 ${desktopDrawer === 'history' ? 'bg-violet-500/20 text-violet-300 shadow-[0_0_15px_rgba(139,92,246,0.3)]' : 'bg-white/5 hover:bg-white/10 text-neutral-400 hover:text-white'}`}
+          >
+            <Database className="w-5 h-5" />
+          </button>
+
           <button 
             onClick={() => setDesktopDrawer(desktopDrawer === 'stream' ? 'none' : 'stream')}
             className={`p-2.5 rounded-xl transition-all duration-300 relative ${desktopDrawer === 'stream' ? 'bg-violet-500/20 text-violet-300 shadow-[0_0_15px_rgba(139,92,246,0.3)]' : 'bg-white/5 hover:bg-white/10 text-neutral-400 hover:text-white'}`}
           >
             {desktopDrawer === 'stream' ? <X className="w-5 h-5" /> : <Terminal className="w-5 h-5" />}
-            {currentPhase !== 'idle' && <span className="absolute top-1.5 right-1.5 flex h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />}
+            {currentPhase !== 'idle' && currentPhase !== 'stable' && <span className="absolute top-1.5 right-1.5 flex h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />}
           </button>
         </div>
       </div>
 
-      {/* ========================================================= */}
-      {/* 3. DESKTOP SLIDING DRAWERS (Glass Overlays)               */}
-      {/* ========================================================= */}
+      {/* Drawers */}
       <AnimatePresence>
         {desktopDrawer !== 'none' && (
           <motion.div 
@@ -115,108 +156,47 @@ export function WorkspaceView() {
         )}
       </AnimatePresence>
       
-      {/* Left Drawer: Swarm Roster */}
-      <div className={`hidden md:block fixed top-28 bottom-6 left-6 z-50 transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] ${desktopDrawer === 'swarm' ? 'translate-x-0 opacity-100' : '-translate-x-[120%] opacity-0 pointer-events-none'}`}>
+      <div className={`hidden md:block fixed top-28 bottom-6 left-6 w-80 z-50 transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] ${desktopDrawer === 'swarm' ? 'translate-x-0 opacity-100' : '-translate-x-[120%] opacity-0 pointer-events-none'}`}>
         <div className="h-full rounded-2xl overflow-hidden shadow-[0_0_50px_rgba(0,0,0,0.8)] border border-white/10">
-          <AgentSidebar />
+          <SwarmSidebar />
         </div>
       </div>
 
-      {/* Right Drawer: Live Stream Logs */}
-      <div className={`hidden md:block fixed top-28 bottom-6 right-6 z-50 transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] ${desktopDrawer === 'stream' ? 'translate-x-0 opacity-100' : 'translate-x-[120%] opacity-0 pointer-events-none'}`}>
+      {/* History Drawer Component */}
+      <div className={`hidden md:block fixed top-28 bottom-6 left-6 w-80 z-50 transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] ${desktopDrawer === 'history' ? 'translate-x-0 opacity-100' : '-translate-x-[120%] opacity-0 pointer-events-none'}`}>
+        <div className="h-full rounded-2xl overflow-hidden shadow-[0_0_50px_rgba(0,0,0,0.8)] border border-white/10">
+          <HistorySidebar />
+        </div>
+      </div>
+
+      <div className={`hidden md:block fixed top-28 bottom-6 right-6 w-96 z-50 transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] ${desktopDrawer === 'stream' ? 'translate-x-0 opacity-100' : 'translate-x-[120%] opacity-0 pointer-events-none'}`}>
         <div className="h-full rounded-2xl overflow-hidden shadow-[0_0_50px_rgba(0,0,0,0.8)] border border-white/10">
           <AgentFeed />
         </div>
       </div>
 
-      {/* ========================================================= */}
-      {/* 4. MAIN WORKSPACE / CANVAS AREA                           */}
-      {/* ========================================================= */}
+      {/* Canvas Renderer */}
       <div className="relative flex-1 w-full h-full md:pt-28 md:pb-6 md:px-6 z-10 flex flex-col">
-        
-        {/* MOBILE TOP HEADER (Hidden on Desktop) */}
-        <div className="md:hidden flex items-center justify-between p-4 bg-black/20 backdrop-blur-md border-b border-white/5 shrink-0">
-          <div className="flex items-center space-x-2">
-            <Cpu className="w-5 h-5 text-violet-400" />
-            <div className="flex flex-col">
-              <span className="text-[10px] text-neutral-400 font-mono font-bold leading-tight tracking-widest">{currentPhase.toUpperCase()} PIPELINE</span>
-              <span className="text-[10px] text-neutral-500 font-sans leading-tight truncate max-w-[200px]">{prompt || "System Idle"}</span>
-            </div>
-          </div>
-          <button onClick={resetEngine} className="p-2 bg-white/5 rounded-lg text-neutral-400 active:scale-95 transition-transform"><RefreshCw className="w-4 h-4" /></button>
-        </div>
-
-        {/* MOBILE CANVAS TABS (Only shows when 'Canvas' is selected on bottom nav) */}
-        {mobileTab === 'canvas' && (
-          <div className="md:hidden flex p-2 bg-black/40 border-b border-white/5 shrink-0 overflow-x-auto [&::-webkit-scrollbar]:hidden">
-            {canvasTabs.map((tab) => {
-              const isActive = canvasTab === tab.id
-              return (
-                <button
-                  key={tab.id} onClick={() => setCanvasTab(tab.id as CanvasTab)}
-                  className={`relative flex items-center space-x-2 px-4 py-2 text-[10px] font-mono tracking-widest uppercase shrink-0 transition-colors ${isActive ? 'text-white' : 'text-neutral-500'}`}
-                >
-                  <tab.icon className={`w-3.5 h-3.5 ${isActive ? 'text-violet-400' : 'text-neutral-600'}`} />
-                  <span>{tab.label}</span>
-                  {isActive && <motion.div layoutId="mobileTabIndicator" className="absolute inset-0 bg-white/5 border border-white/10 rounded-lg -z-10" />}
-                </button>
-              )
-            })}
-          </div>
-        )}
-
-        {/* THE VIEW RENDERER - Fixed multi-child warning by grouping logic */}
         <div className="flex-1 w-full relative bg-black/20 md:bg-black/40 backdrop-blur-xl md:rounded-2xl md:border md:border-white/10 overflow-hidden shadow-2xl">
           <AnimatePresence mode="wait">
-            
-            {/* 1. Mobile View Overrides: Swarm Tab */}
-            {mobileTab === 'swarm' ? (
-              <motion.div 
-                key="mobile-swarm" 
-                initial={{ opacity: 0, scale: 0.98 }} 
-                animate={{ opacity: 1, scale: 1 }} 
-                exit={{ opacity: 0, scale: 1.02 }} 
-                transition={{ duration: 0.25 }} 
-                className="absolute inset-0 w-full h-full p-0 md:hidden [&>div]:!w-full [&>div]:!h-full [&>div]:!border-none [&>div]:!rounded-none"
-              >
-                <AgentSidebar />
-              </motion.div>
-            ) : mobileTab === 'stream' ? (
-              /* 2. Mobile View Overrides: Logs Tab */
-              <motion.div 
-                key="mobile-stream" 
-                initial={{ opacity: 0, scale: 0.98 }} 
-                animate={{ opacity: 1, scale: 1 }} 
-                exit={{ opacity: 0, scale: 1.02 }} 
-                transition={{ duration: 0.25 }} 
-                className="absolute inset-0 w-full h-full p-0 md:hidden [&>div]:!w-full [&>div]:!h-full [&>div]:!border-none [&>div]:!rounded-none"
-              >
-                <AgentFeed />
-              </motion.div>
-            ) : (
-              /* 3. Core Workspace Canvas (Desktop Master & Mobile 'Workspace' Tab) */
-              <motion.div 
-                key={`canvas-${canvasTab}`} 
-                initial={{ opacity: 0, scale: 0.98, filter: "blur(4px)" }} 
-                animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }} 
-                exit={{ opacity: 0, scale: 1.02, filter: "blur(4px)" }} 
-                transition={{ duration: 0.3, ease: "easeOut" }} 
-                className="absolute inset-0 w-full h-full p-[1px]"
-              >
-                {canvasTab === 'topology' && <ArchitectureGraph />}
-                {canvasTab === 'sprint' && <SprintBoard />}
-                {canvasTab === 'code' && <CodeTree />}
-                {canvasTab === 'qa' && <QARunner />}
-              </motion.div>
-            )}
-            
+            <motion.div 
+              key={`canvas-${canvasTab}`} 
+              initial={{ opacity: 0, scale: 0.98, filter: "blur(4px)" }} 
+              animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }} 
+              exit={{ opacity: 0, scale: 1.02, filter: "blur(4px)" }} 
+              transition={{ duration: 0.3, ease: "easeOut" }} 
+              className="absolute inset-0 w-full h-full p-[1px]"
+            >
+              {canvasTab === 'topology' && <ArchitectureGraph />}
+              {canvasTab === 'sprint' && <SprintBoard />}
+              {canvasTab === 'code' && <CodeTree />}
+              {canvasTab === 'qa' && <QARunner />}
+            </motion.div>
           </AnimatePresence>
         </div>
       </div>
 
-      {/* ========================================================= */}
-      {/* 5. MOBILE BOTTOM NAVIGATION (Hidden on Desktop)           */}
-      {/* ========================================================= */}
+      {/* MOBILE BOTTOM NAVIGATION (Hidden on Desktop) */}
       <div className="md:hidden bg-[#050508]/95 backdrop-blur-3xl border-t border-white/10 pb-safe pt-2 px-4 shrink-0 z-50">
         <div className="flex items-center justify-around h-16 pb-2">
           

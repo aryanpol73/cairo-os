@@ -1,48 +1,113 @@
 import { create } from 'zustand'
 
-type Phase = 'idle' | 'discovery' | 'architecting' | 'planning' | 'implementing'
+export type PhaseType = 'idle' | 'discovery' | 'architecting' | 'planning' | 'implementing' | 'testing' | 'stable' | 'error'
+
+interface ProjectHistory { id: number; prompt: string; created_at: string; }
+interface LogItem { id: string; agent: string; text: string; color: string; }
+interface SystemArchitecture { nodes: any[]; edges: any[]; }
+interface SprintBacklog { tasks: any[]; }
 
 interface OrchestrationState {
-  currentPhase: Phase
+  currentPhase: PhaseType
   prompt: string
-  isEngineActive: boolean
-  setPrompt: (prompt: string) => void
-  startEngine: () => void
+  logs: LogItem[]
+  architecture: SystemArchitecture
+  backlog: SprintBacklog
+  generatedCode: string
+  history: ProjectHistory[]
+  ws: WebSocket | null
+  initializeEngine: (prompt: string) => void
+  submitFeedback: (feedback: string) => void
   resetEngine: () => void
+  addLog: (agent: string, text: string) => void
+  fetchHistory: () => Promise<void>
+  loadProject: (id: number) => Promise<void>
+}
+
+const getAgentColor = (agent: string | undefined) => {
+  if (!agent) return 'text-neutral-500'
+  const norm = agent.toLowerCase()
+  if (norm.includes('architect')) return 'text-purple-400'
+  if (norm.includes('product') || norm.includes('pm')) return 'text-emerald-400'
+  if (norm.includes('developer') || norm.includes('engineer')) return 'text-violet-400'
+  if (norm.includes('qa') || norm.includes('tester')) return 'text-cyan-400'
+  if (norm.includes('system')) return 'text-neutral-500'
+  return 'text-neutral-400'
 }
 
 export const useOrchestrationStore = create<OrchestrationState>((set, get) => ({
   currentPhase: 'idle',
   prompt: '',
-  isEngineActive: false,
-  
-  setPrompt: (prompt) => set({ prompt }),
-  
-  startEngine: () => {
-    if (get().isEngineActive) return
-    
-    // 1. Lock the engine and start Discovery phase
-    set({ isEngineActive: true, currentPhase: 'discovery' })
+  logs: [],
+  architecture: { nodes: [], edges: [] },
+  backlog: { tasks: [] },
+  generatedCode: '',
+  history: [],
+  ws: null,
 
-    // 2. Shift to Architecture graph after 3 seconds
-    setTimeout(() => {
-      set({ currentPhase: 'architecting' })
-    }, 3000)
-
-    // 3. Shift to Sprint Planner phase after 8 seconds
-    setTimeout(() => {
-      set({ currentPhase: 'planning' })
-    }, 8000)
-
-    // 4. Shift to Code Implementation phase after 12 seconds
-    setTimeout(() => {
-      set({ currentPhase: 'implementing' })
-    }, 12000)
+  addLog: (agent, text) => {
+    set((state) => ({ logs: [...state.logs, { id: Math.random().toString(36).substring(7), agent: agent || 'SYSTEM', text: text || '', color: getAgentColor(agent) }] }))
   },
 
-  resetEngine: () => set({ 
-    currentPhase: 'idle', 
-    prompt: '', 
-    isEngineActive: false 
-  })
+  initializeEngine: (userPrompt) => {
+    const existingWs = get().ws; if (existingWs) existingWs.close()
+    set({ prompt: userPrompt, currentPhase: 'discovery', logs: [], architecture: { nodes: [], edges: [] }, backlog: { tasks: [] }, generatedCode: '' })
+    const socket = new WebSocket('ws://localhost:8000/ws/orchestrate')
+    socket.onopen = () => socket.send(JSON.stringify({ prompt: userPrompt }))
+    socket.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data)
+        
+        // Auto-update history when the pipeline finishes saving to the database
+        if (data.currentPhase) {
+          set({ currentPhase: data.currentPhase as PhaseType })
+          if (data.currentPhase === 'stable') {
+            get().fetchHistory()
+          }
+        }
+        
+        if (data.architecture) set({ architecture: data.architecture })
+        if (data.backlog) set({ backlog: data.backlog })
+        if (data.generatedCode) set({ generatedCode: data.generatedCode })
+        if (data.agent && data.log) get().addLog(data.agent, data.log)
+      } catch (err) { console.error(err) }
+    }
+    socket.onclose = () => {}; socket.onerror = () => set({ currentPhase: 'error' })
+    set({ ws: socket })
+  },
+
+  submitFeedback: (feedback) => {
+    const existingWs = get().ws
+    if (existingWs && existingWs.readyState === WebSocket.OPEN) {
+      set({ currentPhase: 'architecting', logs: [] })
+      get().addLog('SYSTEM', 'Transmitting refactor instructions...')
+      existingWs.send(JSON.stringify({ type: 'feedback', prompt: feedback }))
+    }
+  },
+
+  resetEngine: () => {
+    const activeWs = get().ws; if (activeWs) activeWs.close()
+    set({ currentPhase: 'idle', prompt: '', logs: [], ws: null, architecture: { nodes: [], edges: [] }, backlog: { tasks: [] }, generatedCode: '' })
+  },
+
+  fetchHistory: async () => {
+    try {
+      const res = await fetch('http://localhost:8000/api/projects')
+      const data = await res.json()
+      set({ history: data.projects || [] })
+    } catch (e) { console.error("Failed to fetch history", e) }
+  },
+
+  loadProject: async (id) => {
+    try {
+      const res = await fetch(`http://localhost:8000/api/projects/${id}`)
+      const data = await res.json()
+      if (!data.error) {
+        set({
+          prompt: data.prompt, architecture: data.architecture, backlog: data.backlog, generatedCode: data.codebase,
+          currentPhase: 'stable', logs: [{ id: 'loaded', agent: 'SYSTEM', text: `Loaded Project #${id} from local memory.`, color: 'text-emerald-400' }]
+        })
+      }
+    } catch (e) { console.error("Failed to load project", e) }
+  }
 }))

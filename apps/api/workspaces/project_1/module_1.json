@@ -1,0 +1,41 @@
+{
+  "anonymous-chat-app": {
+    "package.json": {
+      "content": {
+        "name": "anonymous-chat-app",
+        "version": "1.0.0",
+        "description": "A simple anonymous chat application.",
+        "main": "server.js",
+        "scripts": {
+          "start": "node server.js"
+        },
+        "keywords": [
+          "chat",
+          "anonymous",
+          "websocket",
+          "socket.io"
+        ],
+        "author": "",
+        "license": "ISC",
+        "dependencies": {
+          "express": "^4.18.2",
+          "socket.io": "^4.7.4"
+        }
+      }
+    },
+    "server.js": {
+      "content": "const express = require('express');\nconst http = require('http');\nconst socketIo = require('socket.io');\nconst path = require('path');\n\nconst app = express();\nconst server = http.createServer(app);\nconst io = socketIo(server);\n\nconst PORT = process.env.PORT || 3000;\n\n// Serve static files from the 'public' directory\napp.use(express.static(path.join(__dirname, 'public')));\n\nlet userCount = 0;\n\nio.on('connection', (socket) => {\n  userCount++;\n  const anonymousUsername = `Anonymous User ${userCount}`;\n  console.log(`${anonymousUsername} connected`);\n\n  // Inform the newly connected user of their anonymous name\n  socket.emit('set username', anonymousUsername);\n\n  // Broadcast a message to all clients that a new user has joined\n  io.emit('chat message', { user: 'System', message: `${anonymousUsername} has joined the chat.` });\n\n  socket.on('chat message', (msg) => {\n    console.log(`${anonymousUsername}: ${msg}`);\n    // Broadcast the message to all connected clients, including the sender\n    io.emit('chat message', { user: anonymousUsername, message: msg });\n  });\n\n  socket.on('disconnect', () => {\n    console.log(`${anonymousUsername} disconnected`);\n    // Broadcast a message to all clients that a user has left\n    io.emit('chat message', { user: 'System', message: `${anonymousUsername} has left the chat.` });\n    // Note: userCount is not decremented to keep anonymous IDs unique across sessions\n    // For a more robust system, you might manage active users differently.\n  });\n});\n\nserver.listen(PORT, () => {\n  console.log(`Server running on port ${PORT}`);\n  console.log(`Access the chat at http://localhost:${PORT}`);\n});\n"
+    },
+    "public": {
+      "index.html": {
+        "content": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n    <meta charset=\"UTF-8\">\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n    <title>Anonymous Chat</title>\n    <link rel=\"stylesheet\" href=\"/style.css\">\n</head>\n<body>\n    <div id=\"chat-container\">\n        <div id=\"messages\"></div>\n        <form id=\"message-form\">\n            <input type=\"text\" id=\"message-input\" placeholder=\"Type your anonymous message...\" autocomplete=\"off\">\n            <button type=\"submit\">Send</button>\n        </form>\n    </div>\n\n    <script src=\"/socket.io/socket.io.js\"></script>\n    <script src=\"/client.js\"></script>\n</body>\n</html>\n"
+      },
+      "style.css": {
+        "content": "body {\n    margin: 0;\n    font-family: Arial, sans-serif;\n    background-color: #f0f2f5;\n    display: flex;\n    justify-content: center;\n    align-items: center;\n    min-height: 100vh;\n}\n\n#chat-container {\n    background-color: #fff;\n    border-radius: 8px;\n    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);\n    width: 90%;\n    max-width: 600px;\n    height: 80vh;\n    display: flex;\n    flex-direction: column;\n    overflow: hidden;\n}\n\n#messages {\n    flex-grow: 1;\n    padding: 20px;\n    overflow-y: auto;\n    border-bottom: 1px solid #eee;\n}\n\n.message {\n    margin-bottom: 10px;\n    padding: 8px 12px;\n    border-radius: 15px;\n    max-width: 80%;\n    word-wrap: break-word;\n}\n\n.message.system {\n    background-color: #e0f7fa;\n    color: #00796b;\n    text-align: center;\n    margin: 0 auto 10px auto;\n    font-style: italic;\n    font-size: 0.9em;\n}\n\n.message.other {\n    background-color: #e6e6e6;\n    align-self: flex-start;\n}\n\n.message.self {\n    background-color: #dcf8c6;\n    align-self: flex-end;\n    margin-left: auto;\n}\n\n.message strong {\n    display: block;\n    font-size: 0.8em;\n    color: #555;\n    margin-bottom: 3px;\n}\n\n#message-form {\n    display: flex;\n    padding: 15px;\n    border-top: 1px solid #eee;\n}\n\n#message-input {\n    flex-grow: 1;\n    padding: 10px 15px;\n    border: 1px solid #ddd;\n    border-radius: 20px;\n    margin-right: 10px;\n    font-size: 1em;\n    outline: none;\n}\n\n#message-input:focus {\n    border-color: #007bff;\n}\n\n#message-form button {\n    background-color: #007bff;\n    color: white;\n    border: none;\n    border-radius: 20px;\n    padding: 10px 20px;\n    cursor: pointer;\n    font-size: 1em;\n    transition: background-color 0.2s ease;\n}\n\n#message-form button:hover {\n    background-color: #0056b3;\n}\n"
+      },
+      "client.js": {
+        "content": "const socket = io();\n\nconst messages = document.getElementById('messages');\nconst form = document.getElementById('message-form');\nconst input = document.getElementById('message-input');\n\nlet myUsername = 'Anonymous'; // Will be set by the server\n\n// Function to append messages to the chat window\nfunction appendMessage(user, msg, isSelf = false, isSystem = false) {\n    const item = document.createElement('div');\n    item.classList.add('message');\n\n    if (isSystem) {\n        item.classList.add('system');\n        item.textContent = msg;\n    } else {\n        const userSpan = document.createElement('strong');\n        userSpan.textContent = user;\n        item.appendChild(userSpan);\n        item.appendChild(document.createTextNode(msg));\n\n        if (isSelf) {\n            item.classList.add('self');\n        } else {\n            item.classList.add('other');\n        }\n    }\n\n    messages.appendChild(item);\n    messages.scrollTop = messages.scrollHeight; // Scroll to bottom\n}\n\n// Listen for 'set username' event from the server\nsocket.on('set username', (username) => {\n    myUsername = username;\n    console.log(`My anonymous username is: ${myUsername}`);\n});\n\n// Handle form submission\nform.addEventListener('submit', (e) => {\n    e.preventDefault(); // Prevent page reload\n    if (input.value) {\n        socket.emit('chat message', input.value);\n        input.value = ''; // Clear the input field\n    }\n});\n\n// Listen for 'chat message' events from the server\nsocket.on('chat message', (data) => {\n    const { user, message } = data;\n    const isSelf = (user === myUsername);\n    const isSystem = (user === 'System');\n    appendMessage(user, message, isSelf, isSystem);\n});\n"
+      }
+    }
+  }
+}
