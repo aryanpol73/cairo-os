@@ -1,8 +1,11 @@
 import asyncio
 import json
-from google import genai
-from google.genai import types
+import os
+import google.generativeai as genai
 from pydantic import BaseModel
+
+# Configure API Key using system environment variables
+genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 
 # Force the AI to return this exact structure
 class QAReport(BaseModel):
@@ -26,16 +29,19 @@ class ReviewerAgent:
         """
 
         def call_gemini():
-            client = genai.Client()
-            return client.models.generate_content(
-                model='gemini-2.5-flash',
-                contents=f"Review this codebase:\n\n{generated_code}",
-                config=types.GenerateContentConfig(
-                    system_instruction=system_instruction,
-                    response_mime_type="application/json",
-                    response_schema=QAReport,
-                    temperature=0.1
-                ),
+            # Use stable GenerativeModel
+            model = genai.GenerativeModel(
+                model_name='gemini-1.5-flash',
+                system_instruction=system_instruction
+            )
+            
+            # Using dictionary config for JSON output
+            return model.generate_content(
+                f"Review this codebase:\n\n{generated_code}",
+                generation_config={
+                    "response_mime_type": "application/json",
+                    "temperature": 0.1
+                }
             )
 
         try:
@@ -44,7 +50,7 @@ class ReviewerAgent:
             
             is_clean = report.get("is_clean", True)
             feedback = report.get("feedback_for_developer", "")
-            log_msg = report.get("log_message", "Security compliance scanning complete. Zero critical vulnerabilities found.")
+            log_msg = report.get("log_message", "Security compliance scanning complete.")
 
             return {
                 "is_clean": is_clean,
@@ -57,13 +63,12 @@ class ReviewerAgent:
             }
         except Exception as e:
             print(f"[REVIEWER ERROR] Exception: {e}")
-            # Fail open so the pipeline doesn't crash on an API timeout
             return {
                 "is_clean": True, 
                 "feedback": "",
                 "latest_log": {
                     "phase": "testing",
                     "agent": "QA Tester",
-                    "log": f"Reviewer block bypassed due to network exception."
+                    "log": "Reviewer block bypassed due to network exception."
                 }
             }

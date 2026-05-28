@@ -1,8 +1,11 @@
 import asyncio
 import json
-from google import genai
-from google.genai import types
+import os
+import google.generativeai as genai
 from models.schemas import SwarmGraphState
+
+# Configure API Key
+genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 
 class DeveloperAgent:
     @staticmethod
@@ -18,14 +21,16 @@ class DeveloperAgent:
         """
 
         def call_gemini():
-            client = genai.Client()
-            return client.models.generate_content(
-                model='gemini-2.5-flash',
-                contents=f"Generate production code files for project '{user_prompt}' matching this structure: {architecture_context}",
-                config=types.GenerateContentConfig(
-                    system_instruction=system_instruction,
-                    temperature=0.3
-                ),
+            # Use the stable GenerativeModel class
+            model = genai.GenerativeModel(
+                model_name='gemini-1.5-flash',
+                system_instruction=system_instruction
+            )
+            
+            # Generate content using the dictionary config
+            return model.generate_content(
+                f"Generate production code files for project '{user_prompt}' matching this structure: {architecture_context}",
+                generation_config={"temperature": 0.3}
             )
 
         try:

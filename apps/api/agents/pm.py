@@ -1,8 +1,11 @@
 import asyncio
 import json
-from google import genai
-from google.genai import types
+import os
+import google.generativeai as genai
 from models.schemas import SwarmGraphState, ProjectSprintBacklog
+
+# Configure API Key using system environment variables
+genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 
 class PMAgent:
     @staticmethod
@@ -20,16 +23,19 @@ class PMAgent:
         """
 
         def call_gemini():
-            client = genai.Client()
-            return client.models.generate_content(
-                model='gemini-2.5-flash',
-                contents=f"Based on the project prompt '{user_prompt}' and this generated layout: {architecture_context}, build an agile engineering backlog.",
-                config=types.GenerateContentConfig(
-                    system_instruction=system_instruction,
-                    response_mime_type="application/json",
-                    response_schema=ProjectSprintBacklog,
-                    temperature=0.3
-                ),
+            # Standard model initialization
+            model = genai.GenerativeModel(
+                model_name='gemini-1.5-flash',
+                system_instruction=system_instruction
+            )
+            
+            # Using dictionary-based generation_config to avoid 'types' dependency
+            return model.generate_content(
+                f"Based on the project prompt '{user_prompt}' and this generated layout: {architecture_context}, build an agile engineering backlog.",
+                generation_config={
+                    "response_mime_type": "application/json",
+                    "temperature": 0.3
+                }
             )
 
         try:
@@ -53,6 +59,6 @@ class PMAgent:
                 "latest_log": {
                     "phase": "planning",
                     "agent": "Product Mgr",
-                    "log": f"Product Manager failed to compile backlog maps."
+                    "log": "Product Manager failed to compile backlog maps."
                 }
             }
