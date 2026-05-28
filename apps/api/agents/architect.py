@@ -1,8 +1,11 @@
 import asyncio
 import json
-from google import genai
-from google.genai import types
+import os
+import google.generativeai as genai
 from models.schemas import SwarmGraphState, SystemArchitectureBlueprint
+
+# Ensure the API key is configured using the key from the environment
+genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 
 class ArchitectAgent:
     @staticmethod
@@ -19,20 +22,22 @@ class ArchitectAgent:
 
         # Thread-safe synchronous execution block wrapper
         def call_gemini():
-            client = genai.Client()
-            return client.models.generate_content(
-                model='gemini-2.5-flash',
-                contents=f"Design a complete architecture blueprint for this application concept: {prompt}",
-                config=types.GenerateContentConfig(
-                    system_instruction=system_instruction,
-                    response_mime_type="application/json",
-                    response_schema=SystemArchitectureBlueprint,
-                    temperature=0.2
-                ),
+            # Standard model initialization
+            model = genai.GenerativeModel(
+                model_name='gemini-1.5-flash',
+                system_instruction=system_instruction
+            )
+            
+            # Using dictionary-based generation_config to avoid 'types' dependency
+            return model.generate_content(
+                f"Design a complete architecture blueprint for this application concept: {prompt}",
+                generation_config={
+                    "response_mime_type": "application/json",
+                    "temperature": 0.2
+                }
             )
 
         try:
-            # Safely pass the synchronous network task to a background thread
             response = await asyncio.to_thread(call_gemini)
             blueprint_dict = json.loads(response.text)
             
@@ -42,7 +47,7 @@ class ArchitectAgent:
                 "latest_log": {
                     "phase": "architecting",
                     "agent": "Architect",
-                    "log": f"Gemini successfully mapped a live software footprint containing {len(blueprint_dict.get('nodes', []))} system architecture layers."
+                    "log": f"Gemini mapped a software footprint with {len(blueprint_dict.get('nodes', []))} layers."
                 }
             }
             
@@ -54,6 +59,6 @@ class ArchitectAgent:
                 "latest_log": {
                     "phase": "architecting",
                     "agent": "Architect",
-                    "log": f"Inference engine bottleneck encountered. Falling back to default layout context."
+                    "log": "Inference engine bottleneck. Falling back to default."
                 }
             }
